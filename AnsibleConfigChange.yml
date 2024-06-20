@@ -1,0 +1,159 @@
+######################################################
+# Description: Installs Nessus, Crowdstrike, and UDA for windows hosts
+# Author: Antwain Salisbury
+# Last Modified : Tue June 17, 2022
+# Changed nessus agent from NessusAgent-10.0.0-x64.msi to NessusAgent-10.1.3-x64.msi
+######################################################
+---
+- name: Installs Nessus, Crowdstrike, and UDA for windows hosts
+  hosts: all
+  gather_facts: yes
+  become: no
+  vars:
+    ansible_user: mydomain\myadmin
+    ansible_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          65663164646564363366343433323333663864363236633638613437306339363564336239626562
+          3137313562663661636633666232383362616262363462660a633561363539626637366234306263
+          38383534623832363963313330666133643261323634383565366139393938636233633130663938
+          6566653565636531330a366232303461323938386262363337393939376265323566373133373466
+          6330
+  tasks:
+  ### transfer UDA agent and first run with logging
+    - name: copy windows scanner (UDA) agent to remote hosts not SEGPS
+      win_copy:
+        src: ~/development/ops/universalDiscoveryAgent/DevSec-Mscanner-Win-x64.exe
+        dest: x:\sim\DevSec-Mscanner-Win-x64.exe
+      when: ansible_hostname is not match("amlsegps.*")
+
+    - name: copy windows scanner (UDA) agent to remote hosts that are SEGPS
+      win_copy:
+        src: ~/development/ops/universalDiscoveryAgent/DevSec-EGscanner-x64win.exe
+        dest: x:\sim\DevSec-EGscanner-x64win.exe
+      when: ansible_hostname is match("amlsegps.*")
+
+    - name: scheduled monthly task for UDA agent on hosts not SEGPS
+      win_scheduled_task:
+        name: UDA monthly scan
+        actions:
+        - path: x:\sim\DevSec-Mscanner-Win-x64.exe
+        triggers:
+        - type: monthly
+          days_of_month: 1
+          start_boundary: '2022-02-01T03:00:00'
+        username: SYSTEM
+        state: present
+        enabled: yes
+      when: ansible_hostname is not match("amlsegps.*")
+
+    - name: scheduled monthly task for UDA agent on hosts that are SEGPS
+      win_scheduled_task:
+        name: UDA monthly scan
+        actions:
+        - path: x:\sim\DevSec-EGscanner-x64win.exe
+        triggers:
+        - type: monthly
+          days_of_month: 1
+          start_boundary: '2022-02-01T03:00:00'
+        username: SYSTEM
+        state: present
+        enabled: yes
+      when: ansible_hostname is match("amlsegps.*")
+
+    - name: first run of windows scanner (UDA) agent on hosts not SEGPS
+      win_command: x:\sim\DevSec-Mscanner-Win-x64.exe
+      register: firstRun
+      when: ansible_hostname is not match("amlsegps.*")
+
+    - name: first run of windows scanner (UDA) agent on hosts that are SEGPS
+      win_command: x:\sim\DevSec-EGscanner-x64win.exe
+      register: firstRun
+      when: ansible_hostname is match("amlsegps.*")
+
+    - name: event log entry UDA
+      community.windows.win_eventlog_entry:
+        entry_type: Information
+        log: Application
+        message: First run of UDA scanner
+        source: Application
+        event_id: 4042
+      tags:
+         - logging
+      when: firstRun is changed
+
+### copy nessus agent based on host with logging
+    - name: copy nessus agent to remote host
+      win_copy:
+        src: ~/development/ops/nessus-agent/NessusAgent-10.1.3-x64.msi
+        dest: x:\sim\NessusAgent-10.1.3-x64.msi
+
+    - name: install nessus agent
+      win_package:
+        path: x:\sim\NessusAgent-10.1.3-x64.msi
+        state: present
+        arguments: 'NESSUS_SERVER="cloud.tenable.com:443" NESSUS_KEY=fefl NESSUS_NAME="{{ ansible_hostname }}" NESSUS_GROUPS="200049-CIS-dept" NESSUS_PROXY_SERVER="zz    prox" NESSUS_OFFLINE_INSTALL="yes" /qn /norestart /L*v "C:\Tenable_MSI.log"'
+      register: install
+
+    - name: Waiting for string Starting Nessus Agent in backend.log
+      win_wait_for:
+        path: 'C:\ProgramData\Tenable\Nessus Agent\nessus\logs\backend.log'
+        regex: Starting Nessus Agent
+
+    - name:  get agent status
+      win_command: nessuscli.exe agent status
+      args:
+        chdir: c:\Program Files\Tenable\Nessus Agent
+      register: status
+      ignore_errors: yes
+
+    - name: status of Nessus link
+      debug:
+        msg: "The state of the nessus link is {{ status.stdout_lines | select('search','Linked to.*') | first }}"
+
+    - name: event log entry for nessus agent install
+      community.windows.win_eventlog_entry:
+        entry_type: Information
+        log: Application
+        message: Ansible install of nessus agent
+        source: Application
+        event_id: 4040
+      tags:
+         - logging
+      when: install is changed
+
+
+
+### copy crowdstrike based on host with logging
+    - name: copy crowdstrike agent to remote host
+      win_copy:
+        src: ~/development/ops/crowdstrike/WindowsSensor.exe
+        dest: x:\sim\WindowsSensor.exe
+
+    - name: deploy crowdstrike agent
+      win_package:
+        product_id: crowdstrike
+        path: s:\sim\WindowsSensor.exe
+        state: present
+        arguments: /install /quiet /norestart CID=AD458-C9 APH=proxyaddress APP=9290
+      register: install
+
+    - name: event log entry for install Crowdstrike
+      community.windows.win_eventlog_entry:
+        entry_type: Information
+        log: Application
+        message: Ansible install of crowdstrike agent
+        source: Application
+        event_id: 4041
+      tags:
+         - logging
+      when: install is changed
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
