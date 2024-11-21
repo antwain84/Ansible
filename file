@@ -1,0 +1,87 @@
+# Variables
+$ServiceAccountObjectId = "service-account-object-id" # Replace with the Object ID of the service account
+$ServiceAccountUPN = "service-account-upn@example.com" # Replace with the UPN of the service account
+
+# Connect to Azure
+Connect-AzAccount
+
+# Get all subscriptions
+$subscriptions = Get-AzSubscription
+
+# Initialize results
+$results = @()
+
+foreach ($subscription in $subscriptions) {
+    Set-AzContext -SubscriptionId $subscription.Id
+    Write-Host "Checking subscription:" $subscription.Name -ForegroundColor Green
+
+    # Check Role Assignments for the Service Account
+    $roleAssignments = Get-AzRoleAssignment -ObjectId $ServiceAccountObjectId -ErrorAction SilentlyContinue
+    if ($roleAssignments) {
+        foreach ($role in $roleAssignments) {
+            $results += [PSCustomObject]@{
+                SubscriptionName = $subscription.Name
+                ResourceName     = $role.Scope
+                ResourceType     = "Role Assignment"
+                Details          = $role.RoleDefinitionName
+            }
+        }
+    }
+
+    # Check Key Vault Access Policies
+    $keyVaults = Get-AzKeyVault
+    foreach ($keyVault in $keyVaults) {
+        $accessPolicies = Get-AzKeyVaultAccessPolicy -VaultName $keyVault.VaultName
+        $matchingPolicy = $accessPolicies | Where-Object { $_.ObjectId -eq $ServiceAccountObjectId }
+        if ($matchingPolicy) {
+            $results += [PSCustomObject]@{
+                SubscriptionName = $subscription.Name
+                ResourceName     = $keyVault.VaultName
+                ResourceType     = "Key Vault"
+                Details          = "Access Policy Found"
+            }
+        }
+    }
+
+    # Check App Service Identity Usage
+    $appServices = Get-AzWebApp
+    foreach ($appService in $appServices) {
+        if ($appService.Identity.PrincipalId -eq $ServiceAccountObjectId) {
+            $results += [PSCustomObject]@{
+                SubscriptionName = $subscription.Name
+                ResourceName     = $appService.Name
+                ResourceType     = "App Service"
+                Details          = "Used as Managed Identity"
+            }
+        }
+    }
+
+    # Check VM Managed Identity
+    $vms = Get-AzVM
+    foreach ($vm in $vms) {
+        if ($vm.Identity -and ($vm.Identity.UserAssignedIdentities.Keys -contains $ServiceAccountObjectId)) {
+            $results += [PSCustomObject]@{
+                SubscriptionName = $subscription.Name
+                ResourceName     = $vm.Name
+                ResourceType     = "Virtual Machine"
+                Details          = "Assigned Managed Identity"
+            }
+        }
+    }
+}
+
+# Check Azure AD Groups for the Service Account
+$aadGroups = Get-AzADGroup | Where-Object { $_.Members -contains $ServiceAccountObjectId }
+foreach ($group in $aadGroups) {
+    $results += [PSCustomObject]@{
+        SubscriptionName = "N/A"
+        ResourceName     = $group.DisplayName
+        ResourceType     = "Azure AD Group"
+        Details          = "Group Membership"
+    }
+}
+
+# Export results to a CSV file
+$results | Export-Csv -Path "./ServiceAccountUsage.csv" -NoTypeInformation -Force
+
+Write-Host "Script completed. Results exported to ServiceAccountUsage.csv" -ForegroundColor Yellow
