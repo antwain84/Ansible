@@ -1,0 +1,37 @@
+
+# Define the number of days to check for certificate expiration
+$daysToCheck = 60
+
+# Get the current date and calculate the threshold for expiration
+$thresholdDate = (Get-Date).AddDays($daysToCheck)
+
+# Define the certificate stores to search
+$certStores = @("Cert:\LocalMachine\My", "Cert:\LocalMachine\Root", "Cert:\LocalMachine\CA")
+
+# Loop through each store and check for certificates nearing expiration
+$expiringCerts = foreach ($store in $certStores) {
+    Get-ChildItem -Path $store | Where-Object {
+        $_.NotAfter -le $thresholdDate -and $_.NotAfter -gt (Get-Date)
+    } | Select-Object @{
+        Name       = "Certificate Store"
+        Expression = { $store }
+    }, Subject, Issuer, NotAfter
+}
+
+# Display results
+if ($expiringCerts) {
+    Write-Host "Certificates expiring within $daysToCheck days:" -ForegroundColor Yellow
+    $expiringCerts | Format-Table -AutoSize
+} else {
+    Write-Host "No certificates expiring within $daysToCheck days were found." -ForegroundColor Green
+}
+——————————————————————————————————————————————————————————————
+# List of servers
+$servers = Get-Content "C:\servers.txt"
+
+# Run the script remotely
+foreach ($server in $servers) {
+    Invoke-Command -ComputerName $server -ScriptBlock {
+        # Insert the script logic here
+    }
+}
