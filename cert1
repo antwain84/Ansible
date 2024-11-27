@@ -1,0 +1,38 @@
+# Import the necessary module for exporting to Excel
+Import-Module ImportExcel
+
+# Define the output Excel file
+$outputFile = "C:\Temp\CertExpiryReport.xlsx"
+
+# Specify the target servers
+$servers = @("Server1", "Server2", "Server3") # Replace with your server names
+
+# Store the results
+$certExpiryResults = @()
+
+# Loop through each server
+foreach ($server in $servers) {
+    try {
+        Write-Host "Checking certificates on $server..." -ForegroundColor Cyan
+
+        # Get certificates from the LocalMachine store
+        $certs = Invoke-Command -ComputerName $server -ScriptBlock {
+            Get-ChildItem -Path Cert:\LocalMachine\My | Where-Object {
+                $_.NotAfter -le (Get-Date).AddDays(60)
+            } | Select-Object PSComputerName, Subject, NotAfter
+        }
+
+        # Add the results to the array
+        $certExpiryResults += $certs
+    } catch {
+        Write-Host "Failed to query $server: $_" -ForegroundColor Red
+    }
+}
+
+# Export results to Excel
+if ($certExpiryResults) {
+    $certExpiryResults | Export-Excel -Path $outputFile -AutoSize -Title "Certificate Expiry Report" -WorksheetName "CertsExpiringSoon"
+    Write-Host "Certificate expiry report saved to $outputFile" -ForegroundColor Green
+} else {
+    Write-Host "No certificates expiring within 60 days found." -ForegroundColor Yellow
+}
