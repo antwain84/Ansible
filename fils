@@ -22,3 +22,38 @@ Write-Output "Files modified more than 3 years ago in '$targetDirectory':"
 $files | Select-Object FullName, LastWriteTime, Length | Format-Table -AutoSize
 
 Write-Output "`nTotal size of files modified more than 3 years ago: $([math]::Round($totalSize / 1GB, 2)) GB ($totalSize bytes)"
+
+================================================
+# Path to the text file containing file paths
+$filePathsFile = "C:\path\to\filepaths.txt"
+
+# Destination directory
+$destinationDir = "D:\DestinationDir"
+
+# Read file paths from the text file
+$filePaths = Get-Content -Path $filePathsFile
+
+# Loop through each file and copy using ROBOCOPY
+foreach ($filePath in $filePaths) {
+    # Ensure the file exists
+    if (Test-Path -Path $filePath) {
+        # Get the directory structure relative to the root
+        $relativePath = $filePath.Substring(3) -replace ":", ""
+
+        # Construct the full destination path
+        $destPath = Join-Path $destinationDir $relativePath
+
+        # Create the destination directory if it doesn't exist
+        $destDir = Split-Path $destPath -Parent
+        if (-not (Test-Path -Path $destDir)) {
+            New-Item -ItemType Directory -Path $destDir -Force
+        }
+
+        # Copy the file with permissions retained
+        robocopy.exe "$(Split-Path $filePath -Parent)" "$destDir" "$(Split-Path $filePath -Leaf)" /COPYALL /R:3 /W:5
+    } else {
+        Write-Warning "File not found: $filePath"
+    }
+}
+
+=================================
