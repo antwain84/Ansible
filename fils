@@ -113,3 +113,43 @@ foreach ($filePath in $filePaths) {
     }
 }
 ===================================
+# Path to the text file containing file paths
+$filePathsFile = "C:\path\to\filepaths.txt"
+
+# Path to the log file
+$logFile = "C:\path\to\deletion_log.txt"
+
+# Initialize the log file
+"Deletion Log - $(Get-Date)" | Out-File -FilePath $logFile -Encoding UTF8 -Force
+"-------------------------------------------" | Out-File -FilePath $logFile -Append
+
+# Read file paths from the text file
+$filePaths = Get-Content -Path $filePathsFile
+
+# Loop through each file and delete
+foreach ($filePath in $filePaths) {
+    # Trim any extra whitespace from the file path
+    $filePath = $filePath.Trim()
+
+    # Ensure the file exists
+    if (Test-Path -Path $filePath) {
+        try {
+            # Delete the file
+            Remove-Item -Path $filePath -Force
+            $logEntry = "Deleted: $filePath"
+            Write-Output $logEntry
+            Add-Content -Path $logFile -Value $logEntry
+        } catch {
+            $errorEntry = "Failed to delete: $filePath. Error: $_"
+            Write-Warning $errorEntry
+            Add-Content -Path $logFile -Value $errorEntry
+        }
+    } else {
+        $warningEntry = "File not found: $filePath"
+        Write-Warning $warningEntry
+        Add-Content -Path $logFile -Value $warningEntry
+    }
+}
+
+# Final log entry
+"Deletion process completed at $(Get-Date)" | Add-Content -Path $logFile
