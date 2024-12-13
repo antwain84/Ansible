@@ -90,3 +90,26 @@ foreach ($filePath in $filePaths) {
     }
 }
 ==========================================================
+
+# Path to the text file containing file paths
+$filePathsFile = "C:\path\to\filepaths.txt"
+
+# Read file paths from the text file
+$filePaths = Get-Content -Path $filePathsFile
+
+# Loop through each file and delete
+foreach ($filePath in $filePaths) {
+    # Ensure the file exists
+    if (Test-Path -Path $filePath) {
+        try {
+            # Delete the file
+            Remove-Item -Path $filePath -Force
+            Write-Output "Deleted: $filePath"
+        } catch {
+            Write-Warning "Failed to delete: $filePath. Error: $_"
+        }
+    } else {
+        Write-Warning "File not found: $filePath"
+    }
+}
+===================================
